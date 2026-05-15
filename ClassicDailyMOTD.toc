@@ -2,7 +2,7 @@
 ## Title: Classic Daily MOTD
 ## Notes: Select the correct MOTD based on week day, with GUI editor
 ## Author: Kirby2112
-## Version: 0.1.0
+## Version: 0.2.0
 ## SavedVariables: CMOTD_Saved
 
 ClassicDailyMOTD.lua

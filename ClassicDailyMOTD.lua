@@ -29,6 +29,11 @@ local function EnsureCMOTDDefaults()
     if type(CMOTD_Saved.ideas) ~= "string" then
         CMOTD_Saved.ideas = ""
     end
+    if CMOTD_Saved.showMinimapButton == nil then
+        CMOTD_Saved.showMinimapButton = true
+    else
+        CMOTD_Saved.showMinimapButton = CMOTD_Saved.showMinimapButton and true or false
+    end
 end
 
 local ADDON_TAG = "ClassicDailyMOTD"
@@ -136,6 +141,91 @@ local function GuildSetMOTDForce(text)
     return true
 end
 
+local gui
+local minimapBtn
+local CreateGUI
+
+local function ToggleGUI()
+    EnsureCMOTDDefaults()
+    if not gui then
+        gui = CreateGUI()
+    end
+    if gui:IsShown() then
+        gui:Hide()
+    else
+        gui:Show()
+    end
+end
+
+local function UpdateMinimapButtonPosition()
+    if not minimapBtn then
+        return
+    end
+    local angle = CMOTD_Saved.minimapAngle or 220
+    local r = (Minimap:GetWidth() / 2) + 5
+    minimapBtn:SetPoint("CENTER", Minimap, "CENTER", math.cos(math.rad(angle)) * r, math.sin(math.rad(angle)) * r)
+end
+
+local function UpdateMinimapButton()
+    if not minimapBtn then
+        return
+    end
+    if CMOTD_Saved.showMinimapButton then
+        minimapBtn:Show()
+        UpdateMinimapButtonPosition()
+    else
+        minimapBtn:Hide()
+    end
+end
+
+local function CreateMinimapButton()
+    if minimapBtn then
+        return
+    end
+    local btn = CreateFrame("Button", "CDMOTD_MinimapButton", Minimap)
+    btn:SetSize(31, 31)
+    btn:SetFrameStrata("MEDIUM")
+    btn:SetFrameLevel(8)
+    btn:SetMovable(true)
+    btn:EnableMouse(true)
+    btn:RegisterForDrag("LeftButton")
+    btn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+
+    local icon = btn:CreateTexture(nil, "BACKGROUND")
+    icon:SetSize(20, 20)
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+    icon:SetPoint("CENTER")
+
+    local border = btn:CreateTexture(nil, "OVERLAY")
+    border:SetSize(52, 52)
+    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    border:SetPoint("TOPLEFT", -1, 1)
+
+    btn:SetScript("OnClick", ToggleGUI)
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Classic Daily MOTD", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", GameTooltip_Hide)
+    btn:SetScript("OnDragStart", function()
+        btn:SetScript("OnUpdate", function()
+            local mx, my = Minimap:GetCenter()
+            local px, py = GetCursorPosition()
+            local scale = Minimap:GetEffectiveScale()
+            px, py = px / scale, py / scale
+            CMOTD_Saved.minimapAngle = math.deg(math.atan2(py - my, px - mx))
+            UpdateMinimapButtonPosition()
+        end)
+    end)
+    btn:SetScript("OnDragStop", function()
+        btn:SetScript("OnUpdate", nil)
+    end)
+
+    minimapBtn = btn
+    UpdateMinimapButton()
+end
+
 local function ApplyDailyMOTDAuto()
     EnsureCMOTDDefaults()
     if not IsInGuild() or not CanEditMOTD() then
@@ -155,7 +245,7 @@ local function ApplyDailyMOTDAuto()
     end
 end
 
-local function CreateGUI()
+function CreateGUI()
     EnsureCMOTDDefaults()
     local frame = CreateFrame("Frame", "CDMOTD_Frame", UIParent, "BasicFrameTemplateWithInset")
     frame:SetSize(460, 340)
@@ -166,6 +256,7 @@ local function CreateGUI()
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    tinsert(UISpecialFrames, frame:GetName())
 
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     frame.title:SetPoint("TOP", 0, -6)
@@ -210,7 +301,7 @@ local function CreateGUI()
 
     local ideasScroll = CreateFrame("ScrollFrame", "CDMOTD_IdeasScroll", settingsPanel, "UIPanelScrollFrameTemplate")
     ideasScroll:SetPoint("TOPLEFT", 4, -28)
-    ideasScroll:SetPoint("BOTTOMRIGHT", -28, 44)
+    ideasScroll:SetPoint("BOTTOMRIGHT", -28, 68)
 
     local ideasBg = ideasScroll:CreateTexture(nil, "BACKGROUND")
     ideasBg:SetAllPoints()
@@ -224,7 +315,14 @@ local function CreateGUI()
     ideasBox:SetHeight(400)
     ideasBox:SetTextInsets(6, 6, 6, 6)
     ideasBox:SetAutoFocus(false)
-    ideasBox:SetScript("OnEscapePressed", ideasBox.ClearFocus)
+    ideasBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+        if modal:IsShown() then
+            modal:Hide()
+        else
+            frame:Hide()
+        end
+    end)
     ideasScroll:SetScrollChild(ideasBox)
     ideasScroll:EnableMouse(true)
     ideasScroll:SetScript("OnMouseDown", function() ideasBox:SetFocus() end)
@@ -247,6 +345,16 @@ local function CreateGUI()
     importBtn:SetPoint("LEFT", exportBtn, "RIGHT", 8, 0)
     importBtn:SetSize(100, 24)
     importBtn:SetText("Import")
+
+    local minimapCheck = CreateFrame("CheckButton", nil, settingsPanel, "UICheckButtonTemplate")
+    minimapCheck:SetPoint("BOTTOMLEFT", 4, 38)
+    minimapCheck.Text:SetText("Show minimap button")
+    minimapCheck.Text:SetFontObject("GameFontNormalSmall")
+    minimapCheck:SetChecked(CMOTD_Saved.showMinimapButton)
+    minimapCheck:SetScript("OnClick", function(self)
+        CMOTD_Saved.showMinimapButton = self:GetChecked() and true or false
+        UpdateMinimapButton()
+    end)
 
     -- Modal for export / import text
     local modal = CreateFrame("Frame", "CDMOTD_ExportModal", frame, "BackdropTemplate")
@@ -381,7 +489,14 @@ local function CreateGUI()
     editBox:SetHeight(200)
     editBox:SetTextInsets(6, 6, 6, 6)
     editBox:SetAutoFocus(false)
-    editBox:SetScript("OnEscapePressed", editBox.ClearFocus)
+    editBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+        if modal:IsShown() then
+            modal:Hide()
+        else
+            frame:Hide()
+        end
+    end)
     scrollFrame:SetScrollChild(editBox)
 
     scrollFrame:EnableMouse(true)
@@ -511,6 +626,7 @@ local function CreateGUI()
             ShowMOTDTab(false)
             ideasBox:SetText(CMOTD_Saved.ideas or "")
             UpdateIdeasCounter()
+            minimapCheck:SetChecked(CMOTD_Saved.showMinimapButton)
         end
         if UpdateApplyButton then UpdateApplyButton() end
     end)
@@ -559,6 +675,9 @@ local function CreateGUI()
 
     frame:SetScript("OnHide", function()
         PersistCurrent()
+        editBox:ClearFocus()
+        ideasBox:ClearFocus()
+        modal:Hide()
     end)
 
     frame:RegisterEvent("GUILD_MOTD")
@@ -577,17 +696,9 @@ local function CreateGUI()
     return frame
 end
 
-local gui
-
 SLASH_CDMOTD1 = "/cmotd"
 SLASH_CDMOTD2 = "/cdmotd"
-SlashCmdList["CDMOTD"] = function()
-    EnsureCMOTDDefaults()
-    if not gui then
-        gui = CreateGUI()
-    end
-    gui:Show()
-end
+SlashCmdList["CDMOTD"] = ToggleGUI
 
 EnsureCMOTDDefaults()
 
@@ -597,6 +708,7 @@ eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:SetScript("OnEvent", function(_, event, addonName)
     if event == "ADDON_LOADED" and addonName == ADDON_FOLDER then
         EnsureCMOTDDefaults()
+        CreateMinimapButton()
     elseif event == "PLAYER_LOGIN" then
         EnsureCMOTDDefaults()
         C_Timer.After(5, function()

@@ -641,17 +641,24 @@ function CreateGUI()
     applyBtn:SetSize(130, 24)
     applyBtn:SetText("Apply now")
     applyBtn:SetScript("OnClick", function()
-        PersistCurrent()
+        if frame.inSettings then
+            return
+        end
+        PersistMOTD()
         if not IsInGuild() or not CanEditMOTD() then
             return
         end
-        local target = CMOTD_Saved.motdByDay[GetTodayIndex()] or ""
+        local dayIdx = frame.selectedDay
+        if dayIdx < 1 or dayIdx > 7 then
+            return
+        end
+        local target = editBox:GetText()
         if target == "" then
-            print(ADDON_TAG .. ": no MOTD defined for " .. DAYS[GetTodayIndex()] .. ".")
+            print(ADDON_TAG .. ": no MOTD defined for " .. DAYS[dayIdx] .. ".")
             return
         end
         if GuildSetMOTDForce(target) then
-            print(ADDON_TAG .. ": MOTD applied for " .. DAYS[GetTodayIndex()] .. ".")
+            print(ADDON_TAG .. ": MOTD applied for " .. DAYS[dayIdx] .. ".")
         end
         if UpdateApplyButton then UpdateApplyButton() end
     end)
